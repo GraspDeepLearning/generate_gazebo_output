@@ -4,7 +4,6 @@ import numpy as np
 from choose import choose_from, choose_from_or_none
 from paths import CONDENSED_GAZEBO_DIR, GRASP_PRIORS_DIR
 
-
 class AggGazeboOutput():
 
     def __init__(self, in_filepath):
