@@ -24,7 +24,6 @@ class TransformerManager():
         self.transformer.setTransform(transform_msg)
         sleep(.1)
 
-
     def transform_pose(self, pose, old_frame, new_frame):
 
         transform_msg = tf.msg.geometry_msgs.msg.PoseStamped()
