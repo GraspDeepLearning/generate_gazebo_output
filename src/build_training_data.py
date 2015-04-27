@@ -6,6 +6,7 @@ import numpy as np
 from time import sleep
 import math
 import tf
+import os
 
 from choose import choose_from, choose_from_or_none
 from paths import AGG_GRASPIT_DIR, RAW_GAZEBO_DIR, DATASET_TEMPLATE_PATH, MESH_MODELS_DIR
@@ -163,6 +164,7 @@ class GraspRGBDCapture():
         gazebo_grasp_dataset = GraspDataset(self.gazebo_grasp_dataset_full_filepath,
                                             DATASET_TEMPLATE_PATH + "/dataset_configs/gazebo_capture_config.yaml")
 
+        model_names = os.listdir(self.model_path)
         model_name = None
         for grasp in graspit_grasp_dataset.iterator(start=num_iter):
 
@@ -173,7 +175,11 @@ class GraspRGBDCapture():
             #if there is no model, we need to spawn one.
             if model_name is None or model_name != grasp.model_name[0]:
                 model_name = grasp.model_name[0]
-                model_manager.spawn_model(model_name=model_name,  model_type=model_name)
+                if model_name in model_names:
+                    model_manager.spawn_model(model_name=model_name,  model_type=model_name)
+                else:
+                    model_name = None
+                    continue
 
             grasp_pose = Pose()
             grasp_pose.position.x = grasp.palm_pose[0]
@@ -245,13 +251,13 @@ class GraspRGBDCapture():
 if __name__ == '__main__':
 
     graspit_agg_h5 = choose_from(AGG_GRASPIT_DIR)
-    graspit_agg_name = graspit_agg_h5[:3]
+    graspit_agg_name = graspit_agg_h5
 
     input_graspit_dataset_full_filepath = AGG_GRASPIT_DIR + graspit_agg_name
 
     gazebo_grasp_file = choose_from_or_none(RAW_GAZEBO_DIR)
     if not gazebo_grasp_file:
-        gazebo_grasp_file = graspit_agg_name + "-" + get_date_string() + ".h5"
+        gazebo_grasp_file = graspit_agg_name[:-3] + "-" + get_date_string() + ".h5"
 
     gazebo_grasp_dataset_full_filepath = RAW_GAZEBO_DIR + gazebo_grasp_file
 
@@ -260,4 +266,7 @@ if __name__ == '__main__':
                                           gazebo_grasp_dataset_full_filepath=gazebo_grasp_dataset_full_filepath)
 
     grasp_rgbd_capture.run()
+
+    import IPython
+    IPython.embed()
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 import rospy
 import rospkg
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, PointCloud2
+from sensor_msgs import point_cloud2
 from geometry_msgs.msg import Pose
 from gazebo_ros import gazebo_interface
 from gazebo_msgs.srv import (DeleteModelRequest, DeleteModelResponse, DeleteModel, 
@@ -24,11 +25,16 @@ class RGBDListener():
 
     def __init__(self,
                  depth_topic="/camera1/camera/depth/image_raw",
-                 rgb_topic="/camera1/camera/rgb/image_raw"):
+                 rgb_topic="/camera1/camera/rgb/image_raw",
+                 pc_topic="/camera1/camera/depth/points",
+                 use_pc=False):
 
         self.depth_topic = depth_topic
         self.rgb_topic = rgb_topic
+        self.pc_topic = pc_topic
+        self.use_pc = use_pc
         self.rgbd_image = np.zeros((480, 640, 4))
+        self.pc = np.zeros((10, 3))
 
     def depth_image_callback(self, data):
         depth_image_np = self.image2numpy(data)
@@ -37,6 +43,9 @@ class RGBDListener():
     def rgb_image_callback(self, data):
         rgbd_image_np = self.image2numpy(data)
         self.rgbd_image[:, :, 0:3] = rgbd_image_np
+
+    def pc_callback(self, msg):
+        self.pc = msg
 
     #this method from:
     #https://github.com/rll/sushichallenge/blob/master/python/brett2/ros_utils.py
@@ -56,28 +65,31 @@ class RGBDListener():
 
         rospy.init_node('listener', anonymous=True)
 
-        rospy.Subscriber(self.depth_topic, Image, self.depth_image_callback, queue_size=1)
-        rospy.Subscriber(self.rgb_topic, Image, self.rgb_image_callback, queue_size=1)
+        if self.use_pc:
+            print "Using Point Cloud"
+            rospy.Subscriber(self.pc_topic, PointCloud2, self.pc_callback, queue_size=1)
+        else:
+            rospy.Subscriber(self.depth_topic, Image, self.depth_image_callback, queue_size=1)
+            rospy.Subscriber(self.rgb_topic, Image, self.rgb_image_callback, queue_size=1)
 
 
 class GazeboKinectManager():
-    def __init__(self, gazebo_namespace="/gazebo"):
+    def __init__(self, gazebo_namespace="/gazebo", use_pc=False):
         self.gazebo_namespace = gazebo_namespace
-        self.rgbd_listener = RGBDListener()
+        self.rgbd_listener = RGBDListener(use_pc=use_pc)
         self.rgbd_listener.listen()
         self.camera_name = "camera1"
 
         self.get_model_state_service = rospy.ServiceProxy(gazebo_namespace + '/get_model_state', GetModelState)
         self.set_model_state_service = rospy.ServiceProxy(gazebo_namespace + '/set_model_state', SetModelState)
 
-    def spawn_kinect(self):
+    def spawn_kinect(self, model_pose=None):
         model_xml = rospy.get_param("robot_description")
-
-        #f = PyKDL.Frame(PyKDL.Rotation.RPY(0, math.pi, math.pi), PyKDL.Vector(0, 0, 2))
-        f = PyKDL.Frame(PyKDL.Rotation.RPY(0, math.pi+math.pi/4.0, math.pi), PyKDL.Vector(0, 0, 2))
-        f = PyKDL.Frame(PyKDL.Rotation.RPY(0, math.pi/4.0, 0), PyKDL.Vector(0, 0, 2))
-        model_pose = tf_conversions.posemath.toMsg(f)
-        #model_pose = Pose()
+        if model_pose is None:
+            #f = PyKDL.Frame(PyKDL.Rotation.RPY(0, math.pi, math.pi), PyKDL.Vector(0, 0, 2))
+            f = PyKDL.Frame(PyKDL.Rotation.RPY(0, math.pi+math.pi/4.0, math.pi), PyKDL.Vector(0, 0, 2))
+            f = PyKDL.Frame(PyKDL.Rotation.RPY(0, math.pi/4.0, 0), PyKDL.Vector(0, 0, 2))
+            model_pose = tf_conversions.posemath.toMsg(f)
         robot_namespace = self.camera_name
         gazebo_interface.spawn_urdf_model_client(model_name=self.camera_name,
                                                 model_xml=model_xml,
@@ -97,6 +109,12 @@ class GazeboKinectManager():
                     rgbd_image[x, y, 3] = max_depth
 
         return rgbd_image
+
+    def get_processed_point_cloud(self):
+            points = point_cloud2.read_points(self.rgbd_listener.pc)
+            points_list = np.asarray(list(points))
+            points_arr = np.asarray(points_list)
+            return np.copy(points_arr[~np.isnan(points_arr).any(axis=1)])
 
     def get_model_state(self):
         get_model_state_req = GetModelStateRequest()
