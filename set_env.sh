@@ -1,0 +1,1 @@
+export GAZEBO_MODEL_PATH=/home/jvarley/gdl_ws/src/data/data/mesh_models/big_bird_models_processed
