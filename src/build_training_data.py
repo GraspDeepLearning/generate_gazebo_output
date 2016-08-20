@@ -21,7 +21,7 @@ from gazebo_output_aggregator import AggGazeboOutput
 
 class GraspRGBDCapture():
 
-    def __init__(self, model_path, input_graspit_dataset_full_filepath, gazebo_grasp_dataset_full_filepath, camera_dist=2):
+    def __init__(self, model_path, input_graspit_dataset_full_filepath, gazebo_grasp_dataset_full_filepath, camera_dist=1):
         self.model_path = model_path
         self.input_graspit_dataset_full_filepath = input_graspit_dataset_full_filepath
         self.gazebo_grasp_dataset_full_filepath = gazebo_grasp_dataset_full_filepath

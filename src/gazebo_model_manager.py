@@ -14,9 +14,14 @@ import os
 from time import sleep
 
 import tf_conversions
+import tf
 import PyKDL
 import math
 import std_srvs.srv
+
+import time
+import threading
+import copy
 
 rospack = rospkg.RosPack()
 
@@ -34,8 +39,10 @@ class RGBDListener():
         self.pc_topic = pc_topic
         self.use_pc = use_pc
         self.rgbd_image = np.zeros((480, 640, 4))
-        self.pc = np.zeros((10, 3))
-
+        self._pc = np.zeros((10, 3))
+        #self.last_update_time = time.
+        self.semaphore  = threading.Semaphore()  
+        
     def depth_image_callback(self, data):
         depth_image_np = self.image2numpy(data)
         self.rgbd_image[:, :, 3] = depth_image_np
@@ -44,8 +51,28 @@ class RGBDListener():
         rgbd_image_np = self.image2numpy(data)
         self.rgbd_image[:, :, 0:3] = rgbd_image_np
 
-    def pc_callback(self, msg):
-        self.pc = msg
+    def set_pc(self, msg):
+        self.semaphore.acquire()
+        #print "Got a new pointcloud !"
+        points = point_cloud2.read_points(msg)
+        points_list = np.asarray(list(points))
+        points_arr = np.asarray(points_list)
+        self._pc =  np.copy(points_arr[~np.isnan(points_arr).any(axis=1)])
+        self.semaphore.release()
+
+    def clear_pc(self):
+        self.semaphore.acquire()
+        self._pc= None
+        self.semaphore.release()
+
+    def get_pc(self):
+        self.semaphore.acquire()
+        out_pc = None
+        if self._pc != None:
+            out_pc =  np.copy(self._pc)
+        self.semaphore.release()
+        return out_pc
+
 
     #this method from:
     #https://github.com/rll/sushichallenge/blob/master/python/brett2/ros_utils.py
@@ -67,7 +94,7 @@ class RGBDListener():
 
         if self.use_pc:
             print "Using Point Cloud"
-            rospy.Subscriber(self.pc_topic, PointCloud2, self.pc_callback, queue_size=1)
+            rospy.Subscriber(self.pc_topic, PointCloud2, self.set_pc, queue_size=1)
         else:
             rospy.Subscriber(self.depth_topic, Image, self.depth_image_callback, queue_size=1)
             rospy.Subscriber(self.rgb_topic, Image, self.rgb_image_callback, queue_size=1)
@@ -111,10 +138,13 @@ class GazeboKinectManager():
         return rgbd_image
 
     def get_processed_point_cloud(self):
-            points = point_cloud2.read_points(self.rgbd_listener.pc)
-            points_list = np.asarray(list(points))
-            points_arr = np.asarray(points_list)
-            return np.copy(points_arr[~np.isnan(points_arr).any(axis=1)])
+        self.rgbd_listener.clear_pc()
+        pc = self.rgbd_listener.get_pc()
+        while pc == None:
+            pc = self.rgbd_listener.get_pc()
+            time.sleep(0.01)
+            print "Getting the pointcloud still"
+        return pc
 
     def get_model_state(self):
         get_model_state_req = GetModelStateRequest()
@@ -208,7 +238,23 @@ class GazeboModelManager():
         return self.get_model_state_service_proxy(get_model_state_req)
 
     def set_model_state(self, model_name="coke_can", pose=Pose()):
+
         set_model_state_req = SetModelStateRequest()
         set_model_state_req.model_state.model_name = model_name
         set_model_state_req.model_state.pose = pose
-        return self.set_model_state_service_proxy(set_model_state_req)
+        result =  self.set_model_state_service_proxy(set_model_state_req)
+
+        resp = self.get_model_state(model_name)
+
+        p0 = tf_conversions.fromMsg(pose)
+        p1 = tf_conversions.fromMsg(resp.pose)
+        while not tf_conversions.Equal(p0, p1):
+            print pose
+            print resp.pose
+            resp = self.get_model_state(model_name)
+            p1 = tf_conversions.fromMsg(resp.pose)
+            sleep(0.01)
+            print "still updating model state"
+        print "Good to go"
+
+
