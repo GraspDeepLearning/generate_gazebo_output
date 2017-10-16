@@ -33,7 +33,7 @@ class GraspRGBDCapture():
         sleep(2)
 
         model_manager = GazeboModelManager(models_dir=self.model_path)
-        model_manager.pause_physics()
+        #model_manager.pause_physics()
         model_manager.clear_world()
 
         sleep(0.5)
@@ -120,11 +120,13 @@ class GraspRGBDCapture():
                         sleep(.02)
 
                         pc = kinect_manager.get_processed_point_cloud()
+                        rgbd = kinect_manager.get_normalized_rgbd_image()
                         if old_pc != None:
                             for idx in range(30):
                                 if old_pc.shape == pc.shape:
                                     print "GETTING NEW CLOUD, THIS IS SAME AS OLD" + str(idx)
                                     pc = kinect_manager.get_processed_point_cloud()
+                                    rgbd = kinect_manager.get_normalized_rgbd_image()
                                 else:
                                     break
 
@@ -132,26 +134,32 @@ class GraspRGBDCapture():
                             sleep(1.0)
                             first_time = False
                             pc = kinect_manager.get_processed_point_cloud()
+                            rgbd = kinect_manager.get_normalized_rgbd_image()
                             if old_pc != None:
                                 for idx in range(30):
                                     if old_pc.shape == pc.shape:
                                         print "GETTING NEW CLOUD, THIS IS SAME AS OLD" + str(idx)
                                         pc = kinect_manager.get_processed_point_cloud()
+                                        rgbd = kinect_manager.get_normalized_rgbd_image()
                                     else:
                                         break
 
                         old_pc = np.copy(pc)
                         self.save(pc,
+                                  rgbd,
                                   model_name,
                                   model_pose,
                                   kinect_pose,
                                   r_index,
                                   p_index,
                                   y_index)
+                        break
+                    break
+                break
 
             model_manager.remove_model(model_name)
 
-    def save(self, pc, modelname, model_pose, camera_pose, r_index, p_index, y_index):
+    def save(self, pc, rgbd,  modelname, model_pose, camera_pose, r_index, p_index, y_index):
         data_dir = "/srv/data/gazebo_generated/data/ycb/" + self.date_str + "/" + modelname + "/pointclouds/"
 
         if not os.path.exists(data_dir):
@@ -164,6 +172,7 @@ class GraspRGBDCapture():
         #np.save(data_dir + str(id_string) + "pc.npy", pc)
         pcd = pcl.PointCloud(np.array(pc[:, 0:3],np.float32))
         pcl.save(pcd, data_dir + str(id_string) + "pc.pcd")
+        np.save(data_dir + str(id_string) + "rgbd.npy", rgbd)
         np.save(data_dir + str(id_string) + "model_pose.npy", pose_matrix)
         np.save(data_dir + str(id_string) + "camera_pose.npy", camera_matrix)
 

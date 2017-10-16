@@ -38,18 +38,26 @@ class RGBDListener():
         self.rgb_topic = rgb_topic
         self.pc_topic = pc_topic
         self.use_pc = use_pc
-        self.rgbd_image = np.zeros((480, 640, 4))
+        self._rgbd_image = np.zeros((480, 640, 4))
         self._pc = np.zeros((10, 3))
         #self.last_update_time = time.
         self.semaphore  = threading.Semaphore()  
         
     def depth_image_callback(self, data):
+        print "in depth callback"
+        self.semaphore.acquire()
         depth_image_np = self.image2numpy(data)
-        self.rgbd_image[:, :, 3] = depth_image_np
-
+        print "got depth with max val: " + str(depth_image_np.max())
+        self._rgbd_image[:, :, 3] = depth_image_np
+        self.semaphore.release()
+        
     def rgb_image_callback(self, data):
+        print "in rgb callback"
+        self.semaphore.acquire()
         rgbd_image_np = self.image2numpy(data)
-        self.rgbd_image[:, :, 0:3] = rgbd_image_np
+        print "got rgb with max val: " + str(rgbd_image_np.max())
+        self._rgbd_image[:, :, 0:3] = rgbd_image_np
+        self.semaphore.release()
 
     def set_pc(self, msg):
         self.semaphore.acquire()
@@ -73,6 +81,14 @@ class RGBDListener():
         self.semaphore.release()
         return out_pc
 
+    def get_rgbd(self):
+        self.semaphore.acquire()
+        out_rgbd = None
+        if self._pc != None:
+            out_rgbd =  np.copy(self._rgbd_image)
+        self.semaphore.release()
+        return out_rgbd
+
 
     #this method from:
     #https://github.com/rll/sushichallenge/blob/master/python/brett2/ros_utils.py
@@ -95,7 +111,7 @@ class RGBDListener():
         if self.use_pc:
             print "Using Point Cloud"
             rospy.Subscriber(self.pc_topic, PointCloud2, self.set_pc, queue_size=1)
-        else:
+        #else:
             rospy.Subscriber(self.depth_topic, Image, self.depth_image_callback, queue_size=1)
             rospy.Subscriber(self.rgb_topic, Image, self.rgb_image_callback, queue_size=1)
 
@@ -126,8 +142,12 @@ class GazeboKinectManager():
                                                 gazebo_namespace=self.gazebo_namespace)
 
     def get_normalized_rgbd_image(self):
-        rgbd_image = np.copy(self.rgbd_listener.rgbd_image)
-
+        rgbd_image = np.copy(self.rgbd_listener.get_rgbd())
+        while rgbd_image == None:
+            rgbd_image = self.rgbd_listener.get_rgbd()
+            time.sleep(0.01)
+            print "Getting the pointcloud still"
+        
         #fix nans in depth
         max_depth = np.nan_to_num(rgbd_image[:, :, 3]).max()*1.3 + 5.0
         for x in range(rgbd_image.shape[0]):
